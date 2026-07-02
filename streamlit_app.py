@@ -1,43 +1,53 @@
-# Import python packages
 import streamlit as st
-from snowflake.snowpark.context import get_active_session
 from snowflake.snowpark.functions import col, when_matched
 
-# Write directly to the app
-st.title(f":cup_with_straw: Pending Smoothie Orders :cup_with_straw:")
-st.write(
-  """ Orders that need to be filled.
-  """
-)
+# Page title
+st.title(":cup_with_straw: Pending Smoothie Orders :cup_with_straw:")
+st.write("Orders that need to be filled.")
 
+# Connect to Snowflake
+cnx = st.connection("snowflake")
+session = cnx.session()
 
-session = get_active_session()
-
-my_dataframe = (
+# Get pending orders
+orders_df = (
     session.table("SMOOTHIES.PUBLIC.ORDERS")
     .filter(col("ORDER_FILLED") == 0)
 )
 
-rows = my_dataframe.collect()
+rows = orders_df.collect()
 
 if rows:
-    editable_df = st.data_editor(rows)
 
-    submitted = st.button("Submit")
+    # Editable table
+    edited_df = st.data_editor(
+        rows,
+        use_container_width=True,
+        num_rows="fixed"
+    )
 
-    if submitted:
-        og_dataset = session.table("SMOOTHIES.PUBLIC.ORDERS")
-        edited_dataset = session.create_dataframe(editable_df)
+    if st.button("Submit"):
+
+        original_table = session.table("SMOOTHIES.PUBLIC.ORDERS")
+        updated_table = session.create_dataframe(edited_df)
 
         try:
-            og_dataset.merge(
-                edited_dataset,
-                og_dataset["ORDER_UID"] == edited_dataset["ORDER_UID"],
-                [when_matched().update({"ORDER_FILLED": edited_dataset["ORDER_FILLED"]})]
+            original_table.merge(
+                updated_table,
+                original_table["ORDER_UID"] == updated_table["ORDER_UID"],
+                [
+                    when_matched().update(
+                        {
+                            "ORDER_FILLED": updated_table["ORDER_FILLED"]
+                        }
+                    )
+                ],
             )
-            st.success("Order(s) Updated!", icon="👍")
+
+            st.success("Order(s) Updated! 👍")
+
         except Exception as e:
             st.error(f"Something went wrong: {e}")
 
 else:
-    st.success("There are no pending orders right now.", icon="👍")
+    st.success("There are no pending orders right now. 👍")
